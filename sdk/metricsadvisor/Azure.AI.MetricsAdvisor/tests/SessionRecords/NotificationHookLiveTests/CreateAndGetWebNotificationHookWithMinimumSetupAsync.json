@@ -5,43 +5,43 @@
       "RequestMethod": "POST",
       "RequestHeaders": {
         "Accept": "application/json",
-        "Content-Length": "98",
+        "Content-Length": "99",
         "Content-Type": "application/json",
         "Ocp-Apim-Subscription-Key": "Sanitized",
-        "traceparent": "00-f3e415192570b04e808313cf74f416ca-07a0629547b25d45-00",
-        "User-Agent": "azsdk-net-AI.MetricsAdvisor/1.0.0-alpha.20201214.1 (.NET Framework 4.8.4250.0; Microsoft Windows 10.0.19042 )",
+        "traceparent": "00-5021c2ae99bd9444a65e97bf4f86bad8-d8282068c4369143-00",
+        "User-Agent": "azsdk-net-AI.MetricsAdvisor/1.0.0-alpha.20210520.1 (.NET Framework 4.8.4300.0; Microsoft Windows 10.0.19043 )",
         "x-api-key": "Sanitized",
         "x-ms-client-request-id": "330cb546ab8eb830f539dfd94e1dbcb4",
         "x-ms-return-client-request-id": "true"
       },
       "RequestBody": {
         "hookParameter": {
-          "endpoint": "http://contoso.com"
+          "endpoint": "http://contoso.com/"
         },
         "hookType": "Webhook",
         "hookName": "hookkkKbUn4V"
       },
       "StatusCode": 201,
       "ResponseHeaders": {
-        "apim-request-id": "2cd8838e-9f37-4143-b728-5639371cbd68",
+        "apim-request-id": "2d338391-355a-4aeb-8024-cd11e0f7cff2",
         "Content-Length": "0",
-        "Date": "Tue, 15 Dec 2020 01:35:23 GMT",
-        "Location": "https://js-metrics-advisor.cognitiveservices.azure.com/metricsadvisor/v1.0/hooks/c60c6b52-307b-42ae-99d0-293b24c36f16",
+        "Date": "Thu, 20 May 2021 18:41:33 GMT",
+        "Location": "https://js-metrics-advisor.cognitiveservices.azure.com/metricsadvisor/v1.0/hooks/519b2739-e521-44ed-b521-955d202c64ce",
         "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
         "x-content-type-options": "nosniff",
-        "x-envoy-upstream-service-time": "1340",
-        "x-request-id": "2cd8838e-9f37-4143-b728-5639371cbd68"
+        "x-envoy-upstream-service-time": "1341",
+        "x-request-id": "2d338391-355a-4aeb-8024-cd11e0f7cff2"
       },
       "ResponseBody": []
     },
     {
-      "RequestUri": "https://js-metrics-advisor.cognitiveservices.azure.com/metricsadvisor/v1.0/hooks/c60c6b52-307b-42ae-99d0-293b24c36f16",
+      "RequestUri": "https://js-metrics-advisor.cognitiveservices.azure.com/metricsadvisor/v1.0/hooks/519b2739-e521-44ed-b521-955d202c64ce",
       "RequestMethod": "GET",
       "RequestHeaders": {
         "Accept": "application/json",
         "Ocp-Apim-Subscription-Key": "Sanitized",
-        "traceparent": "00-c7c36e5e3c2864478d5317142a3ed653-89088ab881c01840-00",
-        "User-Agent": "azsdk-net-AI.MetricsAdvisor/1.0.0-alpha.20201214.1 (.NET Framework 4.8.4250.0; Microsoft Windows 10.0.19042 )",
+        "traceparent": "00-5021c2ae99bd9444a65e97bf4f86bad8-d3a8e0339b5cdf4a-00",
+        "User-Agent": "azsdk-net-AI.MetricsAdvisor/1.0.0-alpha.20210520.1 (.NET Framework 4.8.4300.0; Microsoft Windows 10.0.19043 )",
         "x-api-key": "Sanitized",
         "x-ms-client-request-id": "c5fd67a7746a7e0ee81a26f209ff5e59",
         "x-ms-return-client-request-id": "true"
@@ -49,17 +49,17 @@
       "RequestBody": null,
       "StatusCode": 200,
       "ResponseHeaders": {
-        "apim-request-id": "318315ec-a9ff-40fa-b06b-4959f6e7a864",
-        "Content-Length": "296",
+        "apim-request-id": "678d69c3-8ff7-4cb7-aaa2-630c4b4d1496",
+        "Content-Length": "297",
         "Content-Type": "application/json; charset=utf-8",
-        "Date": "Tue, 15 Dec 2020 01:35:23 GMT",
+        "Date": "Thu, 20 May 2021 18:41:33 GMT",
         "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
         "x-content-type-options": "nosniff",
-        "x-envoy-upstream-service-time": "133",
-        "x-request-id": "318315ec-a9ff-40fa-b06b-4959f6e7a864"
+        "x-envoy-upstream-service-time": "180",
+        "x-request-id": "678d69c3-8ff7-4cb7-aaa2-630c4b4d1496"
       },
       "ResponseBody": {
-        "hookId": "c60c6b52-307b-42ae-99d0-293b24c36f16",
+        "hookId": "519b2739-e521-44ed-b521-955d202c64ce",
         "hookName": "hookkkKbUn4V",
         "hookType": "Webhook",
         "externalLink": "",
@@ -68,7 +68,7 @@
           "foo@contoso.com"
         ],
         "hookParameter": {
-          "endpoint": "http://contoso.com",
+          "endpoint": "http://contoso.com/",
           "username": "",
           "password": "",
           "headers": {},
@@ -78,27 +78,70 @@
       }
     },
     {
-      "RequestUri": "https://js-metrics-advisor.cognitiveservices.azure.com/metricsadvisor/v1.0/hooks/c60c6b52-307b-42ae-99d0-293b24c36f16",
-      "RequestMethod": "DELETE",
+      "RequestUri": "https://js-metrics-advisor.cognitiveservices.azure.com/metricsadvisor/v1.0/hooks/519b2739-e521-44ed-b521-955d202c64ce",
+      "RequestMethod": "GET",
       "RequestHeaders": {
         "Accept": "application/json",
         "Ocp-Apim-Subscription-Key": "Sanitized",
-        "traceparent": "00-a894c4d281b8ff4394661d761634d188-ac07cad8b77c8746-00",
-        "User-Agent": "azsdk-net-AI.MetricsAdvisor/1.0.0-alpha.20201214.1 (.NET Framework 4.8.4250.0; Microsoft Windows 10.0.19042 )",
+        "traceparent": "00-18663714b25fd64a831ee5bf78edcf29-a4edf2309973e846-00",
+        "User-Agent": "azsdk-net-AI.MetricsAdvisor/1.0.0-alpha.20210520.1 (.NET Framework 4.8.4300.0; Microsoft Windows 10.0.19043 )",
         "x-api-key": "Sanitized",
         "x-ms-client-request-id": "7fc18b6651fe31137dcaf3f9270314f0",
         "x-ms-return-client-request-id": "true"
       },
       "RequestBody": null,
-      "StatusCode": 204,
+      "StatusCode": 200,
       "ResponseHeaders": {
-        "apim-request-id": "efd4d837-9662-46ca-a18d-af0678e90e9b",
-        "Content-Length": "0",
-        "Date": "Tue, 15 Dec 2020 01:35:24 GMT",
+        "apim-request-id": "48183321-afc0-4a58-86f5-5fadfbab6207",
+        "Content-Length": "297",
+        "Content-Type": "application/json; charset=utf-8",
+        "Date": "Thu, 20 May 2021 18:41:33 GMT",
         "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
         "x-content-type-options": "nosniff",
-        "x-envoy-upstream-service-time": "169",
-        "x-request-id": "efd4d837-9662-46ca-a18d-af0678e90e9b"
+        "x-envoy-upstream-service-time": "167",
+        "x-request-id": "48183321-afc0-4a58-86f5-5fadfbab6207"
+      },
+      "ResponseBody": {
+        "hookId": "519b2739-e521-44ed-b521-955d202c64ce",
+        "hookName": "hookkkKbUn4V",
+        "hookType": "Webhook",
+        "externalLink": "",
+        "description": "",
+        "admins": [
+          "foo@contoso.com"
+        ],
+        "hookParameter": {
+          "endpoint": "http://contoso.com/",
+          "username": "",
+          "password": "",
+          "headers": {},
+          "certificateKey": "",
+          "certificatePassword": ""
+        }
+      }
+    },
+    {
+      "RequestUri": "https://js-metrics-advisor.cognitiveservices.azure.com/metricsadvisor/v1.0/hooks/519b2739-e521-44ed-b521-955d202c64ce",
+      "RequestMethod": "DELETE",
+      "RequestHeaders": {
+        "Accept": "application/json",
+        "Ocp-Apim-Subscription-Key": "Sanitized",
+        "traceparent": "00-ef40c6e7ebb0e84f91cd1169f145208c-90ca5f3895a84549-00",
+        "User-Agent": "azsdk-net-AI.MetricsAdvisor/1.0.0-alpha.20210520.1 (.NET Framework 4.8.4300.0; Microsoft Windows 10.0.19043 )",
+        "x-api-key": "Sanitized",
+        "x-ms-client-request-id": "990d45b018dcd1c7a78e4a74843eaef5",
+        "x-ms-return-client-request-id": "true"
+      },
+      "RequestBody": null,
+      "StatusCode": 204,
+      "ResponseHeaders": {
+        "apim-request-id": "add9689c-576a-4a3e-8f9f-b973db5a9d8f",
+        "Content-Length": "0",
+        "Date": "Thu, 20 May 2021 18:41:33 GMT",
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+        "x-content-type-options": "nosniff",
+        "x-envoy-upstream-service-time": "200",
+        "x-request-id": "add9689c-576a-4a3e-8f9f-b973db5a9d8f"
       },
       "ResponseBody": []
     }

@@ -5,13 +5,21 @@ Run `dotnet build /t:GenerateCode` to generate code.
 ### AutoRest Configuration
 > see https://aka.ms/autorest
 
-```yaml
-repo: https://github.com/Azure/azure-rest-api-specs/blob/8a09ea0b84aa36cb0e56bab4f4c8efd83a6fdcf6
+``` yaml
+tag: package-access-control-2020-08-01-preview
+require:
+    - https://github.com/Azure/azure-rest-api-specs/blob/fc5e2fbcfc3f585d38bdb1c513ce1ad2c570cf3d/specification/synapse/data-plane/readme.md
+namespace: Azure.Analytics.Synapse.AccessControl
+public-clients: true
+security: AADToken
+security-scopes: https://dev.azuresynapse.net/.default
 ```
 
+### Make Endpoint type as Uri
+
 ``` yaml
-public-clients: true
-input-file:
-    - $(repo)/specification/synapse/data-plane/Microsoft.Synapse/preview/2020-02-01-preview/roleAssignments.json
-    - $(repo)/specification/synapse/data-plane/Microsoft.Synapse/preview/2020-02-01-preview/roles.json
+directive:
+  from: swagger-document
+  where: $.parameters.Endpoint
+  transform: $.format = "url"
 ```

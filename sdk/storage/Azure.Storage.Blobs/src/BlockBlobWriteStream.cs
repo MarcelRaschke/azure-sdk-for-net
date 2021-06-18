@@ -49,7 +49,7 @@ namespace Azure.Storage.Blobs
             {
                 _buffer.Position = 0;
 
-                string blockId = StorageExtensions.GenerateBlockId(_position + _buffer.Length);
+                string blockId = Shared.StorageExtensions.GenerateBlockId(_position);
 
                 await _blockBlobClient.StageBlockInternal(
                     base64BlockId: blockId,
@@ -77,6 +77,8 @@ namespace Azure.Storage.Blobs
                 tags: _tags,
                 conditions: _conditions,
                 accessTier: default,
+                immutabilityPolicy: default,
+                legalHold: default,
                 async: async,
                 cancellationToken: cancellationToken)
                 .ConfigureAwait(false);

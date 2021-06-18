@@ -5,14 +5,21 @@ using System;
 using System.Diagnostics;
 using System.Reflection;
 using System.Threading.Tasks;
-using Microsoft.Azure.ServiceBus;
+using Azure.Messaging.ServiceBus;
 using Microsoft.Azure.WebJobs.Host.Bindings;
-using Microsoft.Azure.WebJobs.Host.Converters;
+using Newtonsoft.Json;
 
 namespace Microsoft.Azure.WebJobs.ServiceBus.Bindings
 {
     internal class AsyncCollectorArgumentBindingProvider : IQueueArgumentBindingProvider
     {
+        private readonly JsonSerializerSettings _jsonSerializerSettings;
+
+        public AsyncCollectorArgumentBindingProvider(JsonSerializerSettings jsonSerializerSettings)
+        {
+            _jsonSerializerSettings = jsonSerializerSettings;
+        }
+
         public IArgumentBinding<ServiceBusEntity> TryCreate(ParameterInfo parameter)
         {
             Type parameterType = parameter.ParameterType;
@@ -33,29 +40,29 @@ namespace Microsoft.Azure.WebJobs.ServiceBus.Bindings
             return CreateBinding(itemType);
         }
 
-        private static IArgumentBinding<ServiceBusEntity> CreateBinding(Type itemType)
+        private IArgumentBinding<ServiceBusEntity> CreateBinding(Type itemType)
         {
             MethodInfo method = typeof(AsyncCollectorArgumentBindingProvider).GetMethod("CreateBindingGeneric",
-                BindingFlags.NonPublic | BindingFlags.Static);
+                BindingFlags.NonPublic | BindingFlags.Instance);
             Debug.Assert(method != null);
             MethodInfo genericMethod = method.MakeGenericMethod(itemType);
             Debug.Assert(genericMethod != null);
             Func<IArgumentBinding<ServiceBusEntity>> lambda =
                 (Func<IArgumentBinding<ServiceBusEntity>>)Delegate.CreateDelegate(
-                typeof(Func<IArgumentBinding<ServiceBusEntity>>), genericMethod);
+                typeof(Func<IArgumentBinding<ServiceBusEntity>>), this, genericMethod);
             return lambda.Invoke();
         }
 
-        private static IArgumentBinding<ServiceBusEntity> CreateBindingGeneric<TItem>()
+        private IArgumentBinding<ServiceBusEntity> CreateBindingGeneric<TItem>()
         {
-            return new AsyncCollectorArgumentBinding<TItem>(MessageConverterFactory.Create<TItem>());
+            return new AsyncCollectorArgumentBinding<TItem>(MessageConverterFactory.Create<TItem>(_jsonSerializerSettings));
         }
 
         private class AsyncCollectorArgumentBinding<TItem> : IArgumentBinding<ServiceBusEntity>
         {
-            private readonly IConverter<TItem, Message> _converter;
+            private readonly IConverter<TItem, ServiceBusMessage> _converter;
 
-            public AsyncCollectorArgumentBinding(IConverter<TItem, Message> converter)
+            public AsyncCollectorArgumentBinding(IConverter<TItem, ServiceBusMessage> converter)
             {
                 _converter = converter;
             }

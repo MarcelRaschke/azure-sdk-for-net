@@ -9,6 +9,7 @@ using System.Net;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Azure.Messaging.EventHubs.Authorization;
 using Azure.Messaging.EventHubs.Consumer;
 using Azure.Messaging.EventHubs.Core;
 using Azure.Messaging.EventHubs.Primitives;
@@ -409,7 +410,7 @@ namespace Azure.Messaging.EventHubs.Tests
                 using var cancellationSource = new CancellationTokenSource();
                 cancellationSource.CancelAfter(EventHubsTestEnvironment.Instance.TestExecutionTimeLimit);
 
-                var credential = new EventHubsSharedAccessKeyCredential(EventHubsTestEnvironment.Instance.SharedAccessKeyName, EventHubsTestEnvironment.Instance.SharedAccessKey);
+                var credential = new AzureNamedKeyCredential(EventHubsTestEnvironment.Instance.SharedAccessKeyName, EventHubsTestEnvironment.Instance.SharedAccessKey);
                 var sourceEvents = EventGenerator.CreateEvents(50).ToList();
 
                 var connectionString = EventHubsTestEnvironment.Instance.BuildConnectionStringForEventHub(scope.EventHubName);
@@ -417,6 +418,46 @@ namespace Azure.Messaging.EventHubs.Tests
                 await SendEventsAsync(connectionString, sourceEvents, new CreateBatchOptions { PartitionId = partition }, cancellationSource.Token);
 
                 await using (var receiver = new PartitionReceiver(EventHubConsumerClient.DefaultConsumerGroupName, partition, EventPosition.Earliest, EventHubsTestEnvironment.Instance.FullyQualifiedNamespace, scope.EventHubName, credential))
+                {
+                    var readState = await ReadEventsAsync(receiver, sourceEvents.Count, cancellationSource.Token);
+                    Assert.That(cancellationSource.IsCancellationRequested, Is.False, "The cancellation token should not have been signaled.");
+
+                    foreach (var sourceEvent in sourceEvents)
+                    {
+                        var sourceId = sourceEvent.Properties[EventGenerator.IdPropertyName].ToString();
+                        Assert.That(readState.Events.TryGetValue(sourceId, out var readEvent), Is.True, $"The event with custom identifier [{ sourceId }] was not processed.");
+                        Assert.That(sourceEvent.IsEquivalentTo(readEvent), $"The event with custom identifier [{ sourceId }] did not match the corresponding processed event.");
+                    }
+                }
+
+                cancellationSource.Cancel();
+            }
+        }
+
+        /// <summary>
+        ///   Verifies that the <see cref="PartitionReceiver" /> is able to
+        ///   connect to the Event Hubs service and perform operations.
+        /// </summary>
+        ///
+        [Test]
+        public async Task ReceiverCanReadEventsUsingTheSasCredential()
+        {
+            await using (EventHubScope scope = await EventHubScope.CreateAsync(1))
+            {
+                using var cancellationSource = new CancellationTokenSource();
+                cancellationSource.CancelAfter(EventHubsTestEnvironment.Instance.TestExecutionTimeLimit);
+
+                var options = new PartitionReceiverOptions();
+                var resource = EventHubConnection.BuildConnectionSignatureAuthorizationResource(options.ConnectionOptions.TransportType, EventHubsTestEnvironment.Instance.FullyQualifiedNamespace, scope.EventHubName);
+                var signature = new SharedAccessSignature(resource, EventHubsTestEnvironment.Instance.SharedAccessKeyName, EventHubsTestEnvironment.Instance.SharedAccessKey);
+                var credential = new AzureSasCredential(signature.Value);
+                var sourceEvents = EventGenerator.CreateEvents(50).ToList();
+
+                var connectionString = EventHubsTestEnvironment.Instance.BuildConnectionStringForEventHub(scope.EventHubName);
+                var partition = (await QueryPartitionsAsync(connectionString, cancellationSource.Token)).First();
+                await SendEventsAsync(connectionString, sourceEvents, new CreateBatchOptions { PartitionId = partition }, cancellationSource.Token);
+
+                await using (var receiver = new PartitionReceiver(EventHubConsumerClient.DefaultConsumerGroupName, partition, EventPosition.Earliest, EventHubsTestEnvironment.Instance.FullyQualifiedNamespace, scope.EventHubName, credential, options))
                 {
                     var readState = await ReadEventsAsync(receiver, sourceEvents.Count, cancellationSource.Token);
                     Assert.That(cancellationSource.IsCancellationRequested, Is.False, "The cancellation token should not have been signaled.");
@@ -888,6 +929,53 @@ namespace Azure.Messaging.EventHubs.Tests
                         if (state.Events.Count >= 2)
                         {
                             await receiver.CloseAsync(cancellationSource.Token);
+                            await Task.Yield();
+                        }
+
+                        return true;
+                    }
+
+                    var readTask = ReadEventsAsync(receiver, sourceEvents.Count, cancellationSource.Token, iterationCallback: closeAfterFiveRead);
+
+                    Assert.That(async () => await readTask, Throws.InstanceOf<EventHubsException>().And.Property(nameof(EventHubsException.Reason)).EqualTo(EventHubsException.FailureReason.ClientClosed));
+                    Assert.That(cancellationSource.IsCancellationRequested, Is.False, "The cancellation token should not have been signaled.");
+                }
+
+                cancellationSource.Cancel();
+            }
+        }
+
+        /// <summary>
+        ///   Verifies that the <see cref="PartitionReceiver" /> is able to
+        ///   connect to the Event Hubs service and perform operations.
+        /// </summary>
+        ///
+        [Test]
+        public async Task ReceiverCannotReadWhenSharedConnectionIsClosed()
+        {
+            await using (EventHubScope scope = await EventHubScope.CreateAsync(1))
+            {
+                using var cancellationSource = new CancellationTokenSource();
+                cancellationSource.CancelAfter(EventHubsTestEnvironment.Instance.TestExecutionTimeLimit);
+
+                var connectionString = EventHubsTestEnvironment.Instance.BuildConnectionStringForEventHub(scope.EventHubName);
+                var sourceEvents = EventGenerator.CreateSmallEvents(100).ToList();
+
+                var partition = (await QueryPartitionsAsync(connectionString, cancellationSource.Token)).First();
+                await SendEventsAsync(connectionString, sourceEvents, new CreateBatchOptions { PartitionId = partition }, cancellationSource.Token);
+
+                await using (var connection = new EventHubConnection(connectionString))
+                await using (var receiver = new PartitionReceiver(EventHubConsumerClient.DefaultConsumerGroupName, partition, EventPosition.Earliest, connection, LowPrefetchOptions))
+                {
+                    // Create a local function that will close the connection after five events have
+                    // been read.  Because the close happens during the read loop, allow for a short
+                    // delay to ensure that the state transition has been fully captured.
+
+                    async Task<bool> closeAfterFiveRead(ReadState state)
+                    {
+                        if (state.Events.Count >= 2)
+                        {
+                            await connection.CloseAsync(cancellationSource.Token);
                             await Task.Yield();
                         }
 
@@ -1385,11 +1473,218 @@ namespace Azure.Messaging.EventHubs.Tests
                     // there's no way to deterministically predict how many events it can read when restarted.  Validate only that
                     // the reader is able to read without error.
 
-                    await Task.Delay(250);
+                    await Task.Delay(TimeSpan.FromSeconds(1), cancellationSource.Token);
                     Assert.That(async () => await ReadNothingAsync(lowerReceiver, cancellationSource.Token), Throws.Nothing, "The lower receiver should have been able to read after the higher was closed.");
                 }
 
                 cancellationSource.Cancel();
+            }
+        }
+
+        /// <summary>
+        ///   Verifies that the <see cref="PartitionReceiver" /> is able to
+        ///   connect to the Event Hubs service and perform operations.
+        /// </summary>
+        ///
+        [Test]
+        public async Task ExclusiveReceiverDetectsAnotherExclusiveReaderWithSameLevel()
+        {
+            await using (EventHubScope scope = await EventHubScope.CreateAsync(1))
+            {
+                using var cancellationSource = new CancellationTokenSource();
+                cancellationSource.CancelAfter(EventHubsTestEnvironment.Instance.TestExecutionTimeLimit);
+
+                var connectionString = EventHubsTestEnvironment.Instance.BuildConnectionStringForEventHub(scope.EventHubName);
+                var partition = (await QueryPartitionsAsync(connectionString, cancellationSource.Token)).First();
+
+                // Seed the partition with events.
+
+                await SendEventsAsync(connectionString, EventGenerator.CreateSmallEvents(250), new CreateBatchOptions { PartitionId = partition }, cancellationSource.Token);
+
+                // Create the receivers and read concurrently in the background until the initial receiver recognizes the partition has been stolen.
+
+                var batchSize = (LowPrefetchCount * 2);
+                var receiverOptions = new PartitionReceiverOptions { OwnerLevel = 1, PrefetchCount = LowPrefetchCount };
+                var capturedException = default(Exception);
+                var completionSource = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+                await using var firstReceiver = new PartitionReceiver(EventHubConsumerClient.DefaultConsumerGroupName, partition, EventPosition.Earliest, connectionString, receiverOptions);
+                await using var secondReceiver = new PartitionReceiver(EventHubConsumerClient.DefaultConsumerGroupName, partition, EventPosition.Earliest, connectionString, receiverOptions);
+
+                var firstReceiverTask = Task.Run(async () =>
+                {
+                    while (!cancellationSource.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            await firstReceiver.ReceiveBatchAsync(batchSize, TimeSpan.FromSeconds(10), cancellationSource.Token).ConfigureAwait(false);
+                            await Task.Delay(TimeSpan.FromSeconds(0.5), cancellationSource.Token).ConfigureAwait(false);
+                        }
+                        catch (TaskCanceledException)
+                        {
+                            // This is expected; ignore.
+                        }
+                        catch (Exception ex)
+                        {
+                            capturedException = ex;
+                            completionSource.TrySetResult(true);
+                            break;
+                        }
+                    }
+                });
+
+                var secondReceiverTask = Task.Run(async () =>
+                {
+                    while (!cancellationSource.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            await secondReceiver.ReceiveBatchAsync(batchSize, TimeSpan.FromSeconds(10), cancellationSource.Token).ConfigureAwait(false);
+                        }
+                        catch (TaskCanceledException)
+                        {
+                            // This is expected; ignore.
+                        }
+                        catch (EventHubsException ex) when (ex.Reason == EventHubsException.FailureReason.ConsumerDisconnected)
+                        {
+                            // Ignore this and allow the consumer to reassert ownership.
+                        }
+                    }
+                });
+
+                // Wait for the first receiver to set the completion source.
+
+                await Task.WhenAny(completionSource.Task, Task.Delay(Timeout.Infinite, cancellationSource.Token));
+                Assert.That(cancellationSource.IsCancellationRequested, Is.False, "Cancellation should not have been requested.");
+
+                cancellationSource.Cancel();
+
+                // Validate the captured exception; it should indicate that a partition was stolen.
+
+                Assert.That(capturedException, Is.Not.Null, "The contested read should have surfaced an exception.");
+                Assert.That(capturedException, Is.TypeOf<EventHubsException>(), "The exception should be of the correct type.");
+                Assert.That(((EventHubsException)capturedException).Reason, Is.EqualTo(EventHubsException.FailureReason.ConsumerDisconnected), "The contested read should have failed due to a stolen partition.");
+
+                // Cleanup the receive tasks.
+
+                await Task.WhenAll(firstReceiverTask, secondReceiverTask);
+            }
+        }
+
+        /// <summary>
+        ///   Verifies that the <see cref="PartitionReceiver" /> is able to
+        ///   connect to the Event Hubs service and perform operations.
+        /// </summary>
+        ///
+        [Test]
+        public async Task ExclusiveReceiverCanReassertOwnershipFromAnotherExclusiveReaderWithSameLevel()
+        {
+            await using (EventHubScope scope = await EventHubScope.CreateAsync(1))
+            {
+                using var cancellationSource = new CancellationTokenSource();
+                cancellationSource.CancelAfter(EventHubsTestEnvironment.Instance.TestExecutionTimeLimit);
+
+                var connectionString = EventHubsTestEnvironment.Instance.BuildConnectionStringForEventHub(scope.EventHubName);
+                var partition = (await QueryPartitionsAsync(connectionString, cancellationSource.Token)).First();
+
+                // Seed the partition with events.
+
+                await SendEventsAsync(connectionString, EventGenerator.CreateSmallEvents(250), new CreateBatchOptions { PartitionId = partition }, cancellationSource.Token);
+
+                // Create the receivers and read concurrently in the background until the initial receiver recognizes the partition has been stolen.
+
+                var batchSize = (LowPrefetchCount * 2);
+                var receiverOptions = new PartitionReceiverOptions { OwnerLevel = 1, PrefetchCount = LowPrefetchCount };
+                var completionSource = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var secondReceiverStolen = false;
+
+                await using var firstReceiver = new PartitionReceiver(EventHubConsumerClient.DefaultConsumerGroupName, partition, EventPosition.Earliest, connectionString, receiverOptions);
+                await using var secondReceiver = new PartitionReceiver(EventHubConsumerClient.DefaultConsumerGroupName, partition, EventPosition.Earliest, connectionString, receiverOptions);
+
+                var firstReceiverTask = Task.Run(async () =>
+                {
+                    while (!cancellationSource.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            await firstReceiver.ReceiveBatchAsync(batchSize, TimeSpan.FromSeconds(10), cancellationSource.Token).ConfigureAwait(false);
+                            await Task.Delay(TimeSpan.FromSeconds(0.5), cancellationSource.Token).ConfigureAwait(false);
+                        }
+                        catch (TaskCanceledException)
+                        {
+                            // This is expected; ignore.
+                        }
+                        catch (EventHubsException ex) when (ex.Reason == EventHubsException.FailureReason.ConsumerDisconnected)
+                        {
+                            // Once the consumer is disconnected, stop attempting to read.
+
+                            completionSource.TrySetResult(true);
+                            break;
+                        }
+                    }
+                });
+
+                var secondReceiverTask = Task.Run(async () =>
+                {
+                    while (!cancellationSource.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            await secondReceiver.ReceiveBatchAsync(batchSize, TimeSpan.FromSeconds(10), cancellationSource.Token).ConfigureAwait(false);
+                        }
+                        catch (TaskCanceledException)
+                        {
+                            // This is expected; ignore.
+                        }
+                        catch (EventHubsException ex) when (ex.Reason == EventHubsException.FailureReason.ConsumerDisconnected)
+                        {
+                            // If the first consumer was already bumped, then  Ignore this and allow the consumer to reassert ownership.
+
+                            if (completionSource.Task.IsCompleted)
+                            {
+                                Volatile.Write(ref secondReceiverStolen, true);
+                                break;
+                            }
+                        }
+                    }
+                });
+
+                // Wait for the first receiver to set the completion source.
+
+                await Task.WhenAny(completionSource.Task, Task.Delay(Timeout.Infinite, cancellationSource.Token));
+                Assert.That(cancellationSource.IsCancellationRequested, Is.False, "Cancellation should not have been requested.");
+
+                // Start reading with the first receiver again, which should reassert ownership and cause the second receiver to
+                // disconnect.
+
+                while (!cancellationSource.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await firstReceiver.ReceiveBatchAsync(batchSize, TimeSpan.FromSeconds(10), cancellationSource.Token).ConfigureAwait(false);
+
+                        if (Volatile.Read(ref secondReceiverStolen))
+                        {
+                           break;
+                        }
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        // This is expected; ignore.
+                    }
+                    catch (EventHubsException ex) when (ex.Reason == EventHubsException.FailureReason.ConsumerDisconnected)
+                    {
+                        // Ignore this exception and let the receiver reassert ownership.
+                    }
+                }
+
+                Assert.That(secondReceiverStolen, Is.True, "The second receiver should have acknowledged the loss of ownership.");
+                Assert.That(cancellationSource.IsCancellationRequested, Is.False, "Cancellation should not have been requested.");
+                cancellationSource.Cancel();
+
+                // Cleanup the receive tasks.
+
+                await Task.WhenAll(firstReceiverTask, secondReceiverTask);
             }
         }
 

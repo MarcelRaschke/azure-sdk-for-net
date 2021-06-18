@@ -2,12 +2,14 @@
 // Licensed under the MIT License.
 
 using System;
+using Azure.AI.MetricsAdvisor.Models;
 using Azure.Core;
 
-namespace Azure.AI.MetricsAdvisor.Models
+namespace Azure.AI.MetricsAdvisor
 {
     /// <summary> The CommentFeedback. </summary>
     [CodeGenModel("CommentFeedback")]
+    [CodeGenSuppress(nameof(MetricCommentFeedback), typeof(string), typeof(FeedbackDimensionFilter))]
     public partial class MetricCommentFeedback : MetricFeedback
     {
         /// <summary> Initializes a new <see cref="MetricCommentFeedback"/> instance. </summary>

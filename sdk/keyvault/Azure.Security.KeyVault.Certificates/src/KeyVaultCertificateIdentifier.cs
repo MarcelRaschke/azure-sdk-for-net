@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 using System;
+using System.ComponentModel;
+using Azure.Core;
 
 namespace Azure.Security.KeyVault.Certificates
 {
@@ -9,18 +11,33 @@ namespace Azure.Security.KeyVault.Certificates
     /// Information about a <see cref="KeyVaultCertificate"/> parsed from a <see cref="Uri"/>.
     /// You can use this information when calling methods of a <see cref="CertificateClient"/>.
     /// </summary>
-    public readonly struct KeyVaultCertificateIdentifier
+    public readonly struct KeyVaultCertificateIdentifier : IEquatable<KeyVaultCertificateIdentifier>
     {
-        private KeyVaultCertificateIdentifier(Uri sourceId, Uri vaultUri, string name, string version)
+        /// <summary>
+        /// Creates a new instance of the <see cref="KeyVaultCertificateIdentifier"/> class.
+        /// </summary>
+        /// <param name="id">The <see cref="Uri"/> to a certificate or deleted certificate.</param>
+        /// <exception cref="ArgumentException"><paramref name="id"/> is not a valid Key Vault certificate ID.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="id"/> is null.</exception>
+        public KeyVaultCertificateIdentifier(Uri id)
         {
-            SourceId = sourceId;
-            VaultUri = vaultUri;
-            Name = name;
-            Version = version;
+            Argument.AssertNotNull(id, nameof(id));
+
+            if (KeyVaultIdentifier.TryParse(id, out KeyVaultIdentifier identifier))
+            {
+                SourceId = id;
+                VaultUri = identifier.VaultUri;
+                Name = identifier.Name;
+                Version = identifier.Version;
+            }
+            else
+            {
+                throw new ArgumentException($"{id} is not a valid Key Vault certificate ID", nameof(id));
+            }
         }
 
         /// <summary>
-        /// Gets the source <see cref="Uri"/> passed to <see cref="Parse(Uri)"/> or <see cref="TryParse(Uri, out KeyVaultCertificateIdentifier)"/>.
+        /// Gets the source <see cref="Uri"/> passed to <see cref="KeyVaultCertificateIdentifier(Uri)"/>.
         /// </summary>
         public Uri SourceId { get; }
 
@@ -39,43 +56,23 @@ namespace Azure.Security.KeyVault.Certificates
         /// </summary>
         public string Version { get; }
 
-        /// <summary>
-        /// Parses a <see cref="Uri"/> to a certificate or deleted certificate.
-        /// </summary>
-        /// <param name="id">The <see cref="Uri"/> to a certificate or deleted certificate.</param>
-        /// <returns>A <see cref="KeyVaultCertificateIdentifier"/> containing information about the certificate or deleted certificate.</returns>
-        /// <exception cref="ArgumentException">The <paramref name="id"/> is not a valid Key Vault certificate ID.</exception>
-        public static KeyVaultCertificateIdentifier Parse(Uri id)
-        {
-            if (TryParse(id, out KeyVaultCertificateIdentifier certificateId))
-            {
-                return certificateId;
-            }
+        /// <inheritdoc/>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override bool Equals(object obj) =>
+            obj is KeyVaultCertificateIdentifier other && Equals(other);
 
-            throw new ArgumentException($"{id} is not a valid Key Vault certificate ID", nameof(id));
-        }
+        /// <inheritdoc/>
+        public bool Equals(KeyVaultCertificateIdentifier other) =>
+            SourceId.Equals(other.SourceId);
 
-        /// <summary>
-        /// Tries to parse a <see cref="Uri"/> to a certificate or deleted certificate.
-        /// </summary>
-        /// <param name="id">The <see cref="Uri"/> to a certificate or deleted certificate.</param>
-        /// <param name="certificateId">A <see cref="KeyVaultCertificateIdentifier"/> containing information about the certificate or deleted certificate.</param>
-        /// <returns>True if the <paramref name="id"/> could be parsed successfully; otherwise, false.</returns>
-        public static bool TryParse(Uri id, out KeyVaultCertificateIdentifier certificateId)
-        {
-            if (KeyVaultIdentifier.TryParse(id, out KeyVaultIdentifier identifier))
-            {
-                certificateId = new KeyVaultCertificateIdentifier(
-                    id,
-                    identifier.VaultUri,
-                    identifier.Name,
-                    identifier.Version);
+        /// <inheritdoc/>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override int GetHashCode() =>
+            SourceId.GetHashCode();
 
-                return true;
-            }
-
-            certificateId = default;
-            return false;
-        }
+        /// <inheritdoc/>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override string ToString() =>
+            base.ToString();
     }
 }

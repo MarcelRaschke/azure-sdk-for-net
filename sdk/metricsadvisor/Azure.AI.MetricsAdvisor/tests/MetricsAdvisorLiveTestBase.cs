@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Azure.AI.MetricsAdvisor.Administration;
 using Azure.AI.MetricsAdvisor.Models;
 using Azure.Core.TestFramework;
@@ -12,6 +13,10 @@ namespace Azure.AI.MetricsAdvisor.Tests
 {
     public class MetricsAdvisorLiveTestBase : RecordedTestBase<MetricsAdvisorTestEnvironment>
     {
+        protected const string TempDataFeedMetricName = "metric";
+        protected const string TempDataFeedDimensionNameA = "dimensionA";
+        protected const string TempDataFeedDimensionNameB = "dimensionB";
+
         public MetricsAdvisorLiveTestBase(bool isAsync, RecordedTestMode mode) : base(isAsync, mode)
         {
             Sanitizer = new MetricsAdvisorRecordedTestSanitizer();
@@ -35,20 +40,46 @@ namespace Azure.AI.MetricsAdvisor.Tests
 
         protected DateTimeOffset SamplingEndTime => DateTimeOffset.Parse("2020-10-31T00:00:00Z");
 
-        public MetricsAdvisorAdministrationClient GetMetricsAdvisorAdministrationClient()
+        public MetricsAdvisorAdministrationClient GetMetricsAdvisorAdministrationClient(bool useTokenCredential = false)
         {
-            return InstrumentClient(new MetricsAdvisorAdministrationClient(
-                new Uri(TestEnvironment.MetricsAdvisorUri),
-                new MetricsAdvisorKeyCredential(TestEnvironment.MetricsAdvisorSubscriptionKey, TestEnvironment.MetricsAdvisorApiKey),
-                InstrumentClientOptions(new MetricsAdvisorClientsOptions())));
+            var endpoint = new Uri(TestEnvironment.MetricsAdvisorUri);
+            var instrumentedOptions = GetInstrumentedOptions();
+
+            MetricsAdvisorAdministrationClient client = useTokenCredential
+                ? new(endpoint, TestEnvironment.Credential, instrumentedOptions)
+                : new(endpoint, new MetricsAdvisorKeyCredential(TestEnvironment.MetricsAdvisorSubscriptionKey, TestEnvironment.MetricsAdvisorApiKey), instrumentedOptions);
+
+            return InstrumentClient(client);
         }
 
-        public MetricsAdvisorClient GetMetricsAdvisorClient()
+        public MetricsAdvisorClient GetMetricsAdvisorClient(bool useTokenCredential = false)
         {
-            return InstrumentClient(new MetricsAdvisorClient(
-                new Uri(TestEnvironment.MetricsAdvisorUri),
-                new MetricsAdvisorKeyCredential(TestEnvironment.MetricsAdvisorSubscriptionKey, TestEnvironment.MetricsAdvisorApiKey),
-                InstrumentClientOptions(new MetricsAdvisorClientsOptions())));
+            var endpoint = new Uri(TestEnvironment.MetricsAdvisorUri);
+            var instrumentedOptions = GetInstrumentedOptions();
+
+            MetricsAdvisorClient client = useTokenCredential
+                ? new(endpoint, TestEnvironment.Credential, instrumentedOptions)
+                : new(endpoint, new MetricsAdvisorKeyCredential(TestEnvironment.MetricsAdvisorSubscriptionKey, TestEnvironment.MetricsAdvisorApiKey), instrumentedOptions);
+
+            return InstrumentClient(client);
+        }
+
+        protected async Task<DisposableDataFeed> CreateTempDataFeedAsync(MetricsAdvisorAdministrationClient adminClient)
+        {
+            var dataFeed = new DataFeed()
+            {
+                Name = Recording.GenerateAlphaNumericId("dataFeed"),
+                DataSource = new SqlServerDataFeedSource("connString", "query"),
+                Granularity = new DataFeedGranularity(DataFeedGranularityType.Daily),
+                Schema = new DataFeedSchema()
+                {
+                    MetricColumns = { new DataFeedMetric(TempDataFeedMetricName) },
+                    DimensionColumns = { new DataFeedDimension(TempDataFeedDimensionNameA), new DataFeedDimension(TempDataFeedDimensionNameB) }
+                },
+                IngestionSettings = new DataFeedIngestionSettings(SamplingStartTime)
+            };
+
+            return await DisposableDataFeed.CreateDataFeedAsync(adminClient, dataFeed);
         }
 
         protected void ValidateSeriesKey(DimensionKey seriesKey)
@@ -79,6 +110,39 @@ namespace Azure.AI.MetricsAdvisor.Tests
                 Assert.That(column.Key, Is.EqualTo("city").Or.EqualTo("category"));
                 Assert.That(column.Value, Is.Not.Null.And.Not.Empty);
             }
+        }
+
+        protected void ValidateTempDataFeedDimensionKey(DimensionKey dimensionKey, string expectedDimensionA)
+        {
+            Assert.That(dimensionKey, Is.Not.Null);
+
+            Dictionary<string, string> dimensionColumns = dimensionKey.AsDictionary();
+
+            Assert.That(dimensionColumns.Count, Is.EqualTo(1));
+            Assert.That(dimensionColumns.ContainsKey(TempDataFeedDimensionNameA));
+            Assert.That(dimensionColumns[TempDataFeedDimensionNameA], Is.EqualTo(expectedDimensionA));
+        }
+
+        protected void ValidateTempDataFeedDimensionKey(DimensionKey dimensionKey, string expectedDimensionA, string expectedDimensionB)
+        {
+            Assert.That(dimensionKey, Is.Not.Null);
+
+            Dictionary<string, string> dimensionDictionary = dimensionKey.AsDictionary();
+
+            Assert.That(dimensionDictionary.Count, Is.EqualTo(2));
+            Assert.That(dimensionDictionary.ContainsKey(TempDataFeedDimensionNameA));
+            Assert.That(dimensionDictionary.ContainsKey(TempDataFeedDimensionNameB));
+            Assert.That(dimensionDictionary[TempDataFeedDimensionNameA], Is.EqualTo(expectedDimensionA));
+            Assert.That(dimensionDictionary[TempDataFeedDimensionNameB], Is.EqualTo(expectedDimensionB));
+        }
+
+        private MetricsAdvisorClientsOptions GetInstrumentedOptions()
+        {
+            var options = new MetricsAdvisorClientsOptions();
+
+            options.Retry.MaxRetries = 6;
+
+            return InstrumentClientOptions(options);
         }
     }
 }

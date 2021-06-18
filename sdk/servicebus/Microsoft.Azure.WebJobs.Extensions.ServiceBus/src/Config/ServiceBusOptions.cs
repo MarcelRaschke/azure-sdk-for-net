@@ -2,8 +2,10 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
+using System.Net;
 using System.Threading.Tasks;
-using Microsoft.Azure.ServiceBus;
+using Azure.Core;
+using Azure.Messaging.ServiceBus;
 using Microsoft.Azure.WebJobs.Hosting;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -20,109 +22,208 @@ namespace Microsoft.Azure.WebJobs.ServiceBus
         /// </summary>
         public ServiceBusOptions()
         {
-            // Our default options will delegate to our own exception
-            // logger. Customers can override this completely by setting their
-            // own MessageHandlerOptions instance.
-            MessageHandlerOptions = new MessageHandlerOptions(ExceptionReceivedHandler)
-            {
-                MaxConcurrentCalls = Utility.GetProcessorCount() * 16
-            };
-
-            SessionHandlerOptions = new SessionHandlerOptions(ExceptionReceivedHandler);
-
-            // Default operation timeout is 1 minute in ServiceBus SDK
-            // https://github.com/Azure/azure-sdk-for-net/blob/master/sdk/servicebus/Microsoft.Azure.ServiceBus/src/Constants.cs#L30
-            BatchOptions = new BatchOptions()
-            {
-                MaxMessageCount = 1000,
-                OperationTimeout = TimeSpan.FromMinutes(1),
-                AutoComplete = true
-            };
         }
 
         /// <summary>
-        /// Gets or sets the Azure ServiceBus connection string.
-        /// </summary>
-        public string ConnectionString { get; set; }
-
-        /// <summary>
-        /// Gets or sets the default <see cref="Azure.ServiceBus.MessageHandlerOptions"/> that will be used by
-        /// <see cref="Azure.ServiceBus.Core.MessageReceiver"/>s.
-        /// </summary>
-        public MessageHandlerOptions MessageHandlerOptions { get; set; }
-
-        /// <summary>
-        /// Gets or sets the default <see cref="Azure.ServiceBus.SessionHandlerOptions"/> that will be used by
-        /// <see cref="ClientEntity"/>s.
-        /// </summary>
-        public SessionHandlerOptions SessionHandlerOptions { get; set; }
-
-        /// <summary>
-        /// Gets or sets the default PrefetchCount that will be used by <see cref="Azure.ServiceBus.Core.MessageReceiver"/>s.
+        /// Gets or sets the PrefetchCount that will be used when receiving messages. The default value is 0.
         /// </summary>
         public int PrefetchCount { get; set; }
 
         /// <summary>
-        /// Gets or sets the default <see cref="BatchOptions"/> that will be used by
-        /// <see cref="ClientEntity"/>s.
+        /// The set of options to use for determining whether a failed operation should be retried and,
+        /// if so, the amount of time to wait between retry attempts.  These options also control the
+        /// amount of time allowed for receiving messages and other interactions with the Service Bus service.
         /// </summary>
-        public BatchOptions BatchOptions { get; set; }
-
-        internal Action<ExceptionReceivedEventArgs> ExceptionHandler { get; set; }
-
-        public string Format()
+        public ServiceBusRetryOptions ClientRetryOptions
         {
-            JObject messageHandlerOptions = null;
-            if (MessageHandlerOptions != null)
+            get => _clientRetryOptions;
+            set
             {
-                messageHandlerOptions = new JObject
-                {
-                    { nameof(MessageHandlerOptions.AutoComplete), MessageHandlerOptions.AutoComplete },
-                    { nameof(MessageHandlerOptions.MaxAutoRenewDuration), MessageHandlerOptions.MaxAutoRenewDuration },
-                    { nameof(MessageHandlerOptions.MaxConcurrentCalls), MessageHandlerOptions.MaxConcurrentCalls }
-                };
+                Argument.AssertNotNull(value, nameof(ClientRetryOptions));
+                _clientRetryOptions = value;
             }
+        }
+        private ServiceBusRetryOptions _clientRetryOptions = new ServiceBusRetryOptions();
 
-            JObject sessionHandlerOptions = null;
-            if (SessionHandlerOptions != null)
+        /// <summary>
+        ///   The type of protocol and transport that will be used for communicating with the Service Bus
+        ///   service.
+        /// </summary>
+        ///
+        public ServiceBusTransportType TransportType { get; set; } = ServiceBusTransportType.AmqpTcp;
+
+        /// <summary>
+        ///   The proxy to use for communication over web sockets.
+        /// </summary>
+        ///
+        /// <remarks>
+        ///   A proxy cannot be used for communication over TCP; if web sockets are not in
+        ///   use, specifying a proxy is an invalid option.
+        /// </remarks>
+        public IWebProxy WebProxy { get; set; }
+
+        /// <summary>
+        ///  Gets or sets whether to automatically complete messages after successful execution of the function.
+        ///  The default value is true.
+        /// </summary>
+        public bool AutoCompleteMessages { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets the maximum duration within which the lock will be renewed automatically. This
+        /// value should be greater than the longest message lock duration; for example, the LockDuration Property.
+        /// The default value is 5 minutes. This does not apply for functions that receive a batch of messages.
+        /// </summary>
+        public TimeSpan MaxAutoLockRenewalDuration
+        {
+            get => _maxAutoRenewDuration;
+
+            set
             {
-                sessionHandlerOptions = new JObject
-                {
-                    { nameof(SessionHandlerOptions.AutoComplete), SessionHandlerOptions.AutoComplete },
-                    { nameof(SessionHandlerOptions.MaxAutoRenewDuration), SessionHandlerOptions.MaxAutoRenewDuration },
-                    { nameof(SessionHandlerOptions.MaxConcurrentSessions), SessionHandlerOptions.MaxConcurrentSessions },
-                    { nameof(SessionHandlerOptions.MessageWaitTimeout), SessionHandlerOptions.MessageWaitTimeout }
-                };
+                Argument.AssertNotNegative(value, nameof(MaxAutoLockRenewalDuration));
+                _maxAutoRenewDuration = value;
             }
+        }
+        private TimeSpan _maxAutoRenewDuration = TimeSpan.FromMinutes(5);
 
-            JObject batchOptions = null;
-            if (BatchOptions != null)
+        /// <summary>Gets or sets the maximum number of concurrent calls to a function. Note each call
+        /// would be passing a different message. This does not apply for functions that receive a batch of messages.
+        /// The default is 16 times the return value of <see cref="Utility.GetProcessorCount"/>.
+        /// </summary>
+        public int MaxConcurrentCalls
+        {
+            get => _maxConcurrentCalls;
+
+            set
             {
-                batchOptions = new JObject
-                {
-                    { nameof(BatchOptions.MaxMessageCount), BatchOptions.MaxMessageCount },
-                    { nameof(BatchOptions.OperationTimeout), BatchOptions.OperationTimeout },
-                    { nameof(BatchOptions.AutoComplete), BatchOptions.AutoComplete },
-                };
+                Argument.AssertAtLeast(value, 1, nameof(MaxConcurrentCalls));
+                _maxConcurrentCalls = value;
             }
+        }
+        private int _maxConcurrentCalls = Utility.GetProcessorCount() * 16;
 
+        /// <summary>
+        /// Gets or sets the maximum number of sessions that can be processed concurrently by a function.
+        /// The default value is 8. This does not apply for functions that receive a batch of messages.
+        /// </summary>
+        public int MaxConcurrentSessions
+        {
+            get => _maxConcurrentSessions;
+
+            set
+            {
+                Argument.AssertAtLeast(value, 1, nameof(MaxConcurrentSessions));
+                _maxConcurrentSessions = value;
+            }
+        }
+        // TODO the default value in Track 1 was the default value from the Track 1 SDK, which was 2000.
+        // Verify that we are okay to diverge here.
+        private int _maxConcurrentSessions = 8;
+
+        /// <summary>
+        /// Gets or sets an optional exception handler that will be invoked if an exception occurs while attempting to process
+        /// a message. This does not apply for functions that receive a batch of messages.
+        /// </summary>
+        public Func<ProcessErrorEventArgs, Task> ExceptionHandler { get; set; }
+
+        /// <summary>
+        /// Gets or sets the maximum number of messages that will be passed to each function call. This only applies for functions that receive
+        /// a batch of messages. The default value is 1000.
+        /// </summary>
+        public int MaxBatchSize { get; set; } = 1000;
+
+        /// <summary>
+        /// Gets or sets the maximum amount of time to wait for a message to be received for the
+        /// currently active session. After this time has elapsed, the processor will close the session
+        /// and attempt to process another session.
+        /// If not specified, the <see cref="ServiceBusRetryOptions.TryTimeout"/> will be used.
+        /// </summary>
+        public TimeSpan? SessionIdleTimeout { get; set; }
+
+        /// <summary>
+        /// Gets or sets the JSON serialization settings to use when binding to POCOs.
+        /// </summary>
+#pragma warning disable AZC0014 // Avoid using banned types in public API
+        public JsonSerializerSettings JsonSerializerSettings { get; set; } = new()
+        {
+            // The default value, DateParseHandling.DateTime, drops time zone information from DateTimeOffets.
+            // This value appears to work well with both DateTimes (without time zone information) and DateTimeOffsets.
+            DateParseHandling = DateParseHandling.DateTimeOffset,
+            NullValueHandling = NullValueHandling.Ignore,
+            Formatting = Formatting.Indented
+        };
+#pragma warning restore AZC0014 // Avoid using banned types in public API
+
+        /// <summary>
+        /// Formats the options as JSON objects for display.
+        /// </summary>
+        /// <returns>Options formatted as JSON.</returns>
+        string IOptionsFormatter.Format()
+        {
             // Do not include ConnectionString in loggable options.
+            var retryOptions = new JObject
+            {
+                { nameof(ServiceBusClientOptions.RetryOptions.Mode), ClientRetryOptions.Mode.ToString() },
+                { nameof(ServiceBusClientOptions.RetryOptions.TryTimeout), ClientRetryOptions.TryTimeout },
+                { nameof(ServiceBusClientOptions.RetryOptions.Delay), ClientRetryOptions.Delay },
+                { nameof(ServiceBusClientOptions.RetryOptions.MaxDelay), ClientRetryOptions.MaxDelay },
+                { nameof(ServiceBusClientOptions.RetryOptions.MaxRetries), ClientRetryOptions.MaxRetries },
+            };
+
             JObject options = new JObject
             {
+                { nameof(ClientRetryOptions), retryOptions },
+                { nameof(TransportType),  TransportType.ToString()},
+                { nameof(WebProxy),  WebProxy is WebProxy proxy ? proxy.Address.AbsoluteUri : string.Empty },
+                { nameof(AutoCompleteMessages), AutoCompleteMessages },
                 { nameof(PrefetchCount), PrefetchCount },
-                { nameof(MessageHandlerOptions), messageHandlerOptions },
-                { nameof(SessionHandlerOptions), sessionHandlerOptions },
-                { nameof(BatchOptions), batchOptions}
+                { nameof(MaxAutoLockRenewalDuration), MaxAutoLockRenewalDuration },
+                { nameof(MaxConcurrentCalls), MaxConcurrentCalls },
+                { nameof(MaxConcurrentSessions), MaxConcurrentSessions },
+                { nameof(MaxBatchSize), MaxBatchSize },
+                { nameof(SessionIdleTimeout), SessionIdleTimeout.ToString() ?? string.Empty }
             };
 
             return options.ToString(Formatting.Indented);
         }
 
-        private Task ExceptionReceivedHandler(ExceptionReceivedEventArgs args)
+        internal Task ExceptionReceivedHandler(ProcessErrorEventArgs args)
         {
             ExceptionHandler?.Invoke(args);
 
             return Task.CompletedTask;
         }
+
+        internal ServiceBusProcessorOptions ToProcessorOptions(bool autoCompleteMessagesOptionEvaluatedValue) =>
+            new ServiceBusProcessorOptions
+            {
+                AutoCompleteMessages = autoCompleteMessagesOptionEvaluatedValue,
+                PrefetchCount = PrefetchCount,
+                MaxAutoLockRenewalDuration = MaxAutoLockRenewalDuration,
+                MaxConcurrentCalls = MaxConcurrentCalls
+            };
+
+        internal ServiceBusSessionProcessorOptions ToSessionProcessorOptions(bool autoCompleteMessagesOptionEvaluatedValue) =>
+            new ServiceBusSessionProcessorOptions
+            {
+                AutoCompleteMessages = autoCompleteMessagesOptionEvaluatedValue,
+                PrefetchCount = PrefetchCount,
+                MaxAutoLockRenewalDuration = MaxAutoLockRenewalDuration,
+                MaxConcurrentSessions = MaxConcurrentSessions,
+                SessionIdleTimeout = SessionIdleTimeout
+            };
+
+        internal ServiceBusReceiverOptions ToReceiverOptions() =>
+            new ServiceBusReceiverOptions
+            {
+                PrefetchCount = PrefetchCount
+            };
+
+        internal ServiceBusClientOptions ToClientOptions() =>
+            new ServiceBusClientOptions
+            {
+                RetryOptions = ClientRetryOptions,
+                WebProxy = WebProxy,
+                TransportType = TransportType
+            };
     }
 }

@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Microsoft.Azure.WebJobs.Description;
 using Microsoft.Azure.WebJobs.ServiceBus;
-using Microsoft.Azure.ServiceBus;
 
 namespace Microsoft.Azure.WebJobs
 {
@@ -35,21 +34,11 @@ namespace Microsoft.Azure.WebJobs
         /// Initializes a new instance of the <see cref="ServiceBusAttribute"/> class.
         /// </summary>
         /// <param name="queueOrTopicName">The name of the queue or topic to bind to.</param>
-        public ServiceBusAttribute(string queueOrTopicName)
+        /// <param name="serviceBusEntityType">The type of the entity to bind to.</param>
+        public ServiceBusAttribute(string queueOrTopicName, ServiceBusEntityType serviceBusEntityType = ServiceBusEntityType.Queue)
         {
             QueueOrTopicName = queueOrTopicName;
-            EntityType = EntityType.Queue;
-        }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="ServiceBusAttribute"/> class.
-        /// </summary>
-        /// <param name="queueOrTopicName">The name of the queue or topic to bind to.</param>
-        /// <param name="entityType">The type of the entity to bind to.</param>
-        public ServiceBusAttribute(string queueOrTopicName, EntityType entityType)
-        {
-            QueueOrTopicName = queueOrTopicName;
-            EntityType = entityType;
+            ServiceBusEntityType = serviceBusEntityType;
         }
 
         /// <summary>
@@ -65,6 +54,6 @@ namespace Microsoft.Azure.WebJobs
         /// <summary>
         /// Value indicating the type of the entity to bind to.
         /// </summary>
-        public EntityType EntityType { get; set; }
+        public ServiceBusEntityType ServiceBusEntityType { get; set; }
     }
 }

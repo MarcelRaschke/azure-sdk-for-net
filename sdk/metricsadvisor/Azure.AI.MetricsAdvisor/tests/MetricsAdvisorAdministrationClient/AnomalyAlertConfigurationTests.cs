@@ -24,9 +24,17 @@ namespace Azure.AI.MetricsAdvisor.Tests
         {
             MetricsAdvisorAdministrationClient adminClient = GetMetricsAdvisorAdministrationClient();
 
-            Assert.That(() => adminClient.CreateAlertConfigurationAsync(null), Throws.InstanceOf<ArgumentNullException>());
+            var config = new AnomalyAlertConfiguration() { Name = null };
 
+            Assert.That(() => adminClient.CreateAlertConfigurationAsync(null), Throws.InstanceOf<ArgumentNullException>());
             Assert.That(() => adminClient.CreateAlertConfiguration(null), Throws.InstanceOf<ArgumentNullException>());
+
+            Assert.That(() => adminClient.CreateAlertConfigurationAsync(config), Throws.InstanceOf<ArgumentNullException>());
+            Assert.That(() => adminClient.CreateAlertConfiguration(config), Throws.InstanceOf<ArgumentNullException>());
+
+            config.Name = "";
+            Assert.That(() => adminClient.CreateAlertConfigurationAsync(config), Throws.InstanceOf<ArgumentException>());
+            Assert.That(() => adminClient.CreateAlertConfiguration(config), Throws.InstanceOf<ArgumentException>());
         }
 
         [Test]
@@ -34,11 +42,7 @@ namespace Azure.AI.MetricsAdvisor.Tests
         {
             MetricsAdvisorAdministrationClient adminClient = GetMetricsAdvisorAdministrationClient();
 
-            var metricConfigs = new List<MetricAnomalyAlertConfiguration>()
-            {
-                new MetricAnomalyAlertConfiguration(FakeGuid, MetricAnomalyAlertScope.GetScopeForWholeSeries())
-            };
-            var config = new AnomalyAlertConfiguration("configName", new List<string>(), metricConfigs);
+            var config = new AnomalyAlertConfiguration() { Name = "configName" };
 
             using var cancellationSource = new CancellationTokenSource();
             cancellationSource.Cancel();
@@ -52,21 +56,15 @@ namespace Azure.AI.MetricsAdvisor.Tests
         {
             MetricsAdvisorAdministrationClient adminClient = GetMetricsAdvisorAdministrationClient();
 
-            var metricConfigs = new List<MetricAnomalyAlertConfiguration>()
-            {
-                new MetricAnomalyAlertConfiguration(FakeGuid, MetricAnomalyAlertScope.GetScopeForWholeSeries())
-            };
-            var config = new AnomalyAlertConfiguration("configName", new List<string>(), metricConfigs);
+            var config = new AnomalyAlertConfiguration();
 
-            Assert.That(() => adminClient.UpdateAlertConfigurationAsync(null, config), Throws.InstanceOf<ArgumentNullException>());
-            Assert.That(() => adminClient.UpdateAlertConfigurationAsync("", config), Throws.InstanceOf<ArgumentException>());
-            Assert.That(() => adminClient.UpdateAlertConfigurationAsync("configId", config), Throws.InstanceOf<ArgumentException>().With.InnerException.TypeOf(typeof(FormatException)));
-            Assert.That(() => adminClient.UpdateAlertConfigurationAsync(FakeGuid, null), Throws.InstanceOf<ArgumentNullException>());
+            Assert.That(() => adminClient.UpdateAlertConfigurationAsync(null), Throws.InstanceOf<ArgumentNullException>());
+            Assert.That(() => adminClient.UpdateAlertConfiguration(null), Throws.InstanceOf<ArgumentNullException>());
 
-            Assert.That(() => adminClient.UpdateAlertConfiguration(null, config), Throws.InstanceOf<ArgumentNullException>());
-            Assert.That(() => adminClient.UpdateAlertConfiguration("", config), Throws.InstanceOf<ArgumentException>());
-            Assert.That(() => adminClient.UpdateAlertConfiguration("configId", config), Throws.InstanceOf<ArgumentException>().With.InnerException.TypeOf(typeof(FormatException)));
-            Assert.That(() => adminClient.UpdateAlertConfiguration(FakeGuid, null), Throws.InstanceOf<ArgumentNullException>());
+            var configurationWithNullId = new AnomalyAlertConfiguration();
+
+            Assert.That(() => adminClient.UpdateAlertConfigurationAsync(configurationWithNullId), Throws.InstanceOf<ArgumentNullException>());
+            Assert.That(() => adminClient.UpdateAlertConfiguration(configurationWithNullId), Throws.InstanceOf<ArgumentNullException>());
         }
 
         [Test]
@@ -74,17 +72,13 @@ namespace Azure.AI.MetricsAdvisor.Tests
         {
             MetricsAdvisorAdministrationClient adminClient = GetMetricsAdvisorAdministrationClient();
 
-            var metricConfigs = new List<MetricAnomalyAlertConfiguration>()
-            {
-                new MetricAnomalyAlertConfiguration(FakeGuid, MetricAnomalyAlertScope.GetScopeForWholeSeries())
-            };
-            var config = new AnomalyAlertConfiguration("configName", new List<string>(), metricConfigs);
+            var config = new AnomalyAlertConfiguration(FakeGuid, default, default, default, new List<string>(), new List<string>(), new List<MetricAnomalyAlertConfiguration>());
 
             using var cancellationSource = new CancellationTokenSource();
             cancellationSource.Cancel();
 
-            Assert.That(() => adminClient.UpdateAlertConfigurationAsync(FakeGuid, config, cancellationSource.Token), Throws.InstanceOf<OperationCanceledException>());
-            Assert.That(() => adminClient.UpdateAlertConfiguration(FakeGuid, config, cancellationSource.Token), Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(() => adminClient.UpdateAlertConfigurationAsync(config, cancellationSource.Token), Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(() => adminClient.UpdateAlertConfiguration(config, cancellationSource.Token), Throws.InstanceOf<OperationCanceledException>());
         }
 
         [Test]
@@ -135,10 +129,10 @@ namespace Azure.AI.MetricsAdvisor.Tests
             using var cancellationSource = new CancellationTokenSource();
             cancellationSource.Cancel();
 
-            IAsyncEnumerator<AnomalyAlertConfiguration> asyncEnumerator = adminClient.GetAlertConfigurationsAsync(FakeGuid, cancellationSource.Token).GetAsyncEnumerator();
+            IAsyncEnumerator<AnomalyAlertConfiguration> asyncEnumerator = adminClient.GetAlertConfigurationsAsync(FakeGuid, default, cancellationSource.Token).GetAsyncEnumerator();
             Assert.That(async () => await asyncEnumerator.MoveNextAsync(), Throws.InstanceOf<OperationCanceledException>());
 
-            IEnumerator<AnomalyAlertConfiguration> enumerator = adminClient.GetAlertConfigurations(FakeGuid, cancellationSource.Token).GetEnumerator();
+            IEnumerator<AnomalyAlertConfiguration> enumerator = adminClient.GetAlertConfigurations(FakeGuid, default, cancellationSource.Token).GetEnumerator();
             Assert.That(() => enumerator.MoveNext(), Throws.InstanceOf<OperationCanceledException>());
         }
 

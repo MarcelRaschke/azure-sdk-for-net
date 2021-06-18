@@ -2,15 +2,17 @@
 // Licensed under the MIT License.
 
 using System;
+using Azure.AI.MetricsAdvisor.Models;
 using Azure.Core;
 
-namespace Azure.AI.MetricsAdvisor.Models
+namespace Azure.AI.MetricsAdvisor
 {
     /// <summary>
     /// Feedback indicating that the point was incorrectly labeled by the service.
     /// You can specify whether a point should or shouldn't be an anomaly.
     /// </summary>
     [CodeGenModel("AnomalyFeedback")]
+    [CodeGenSuppress(nameof(MetricAnomalyFeedback), typeof(string), typeof(FeedbackDimensionFilter))]
     public partial class MetricAnomalyFeedback : MetricFeedback
     {
         /// <summary> Initializes a new instance of <see cref="MetricAnomalyFeedback"/>. </summary>

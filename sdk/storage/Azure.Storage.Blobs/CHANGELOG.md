@@ -1,7 +1,55 @@
 # Release History
 
-## 12.9.0-beta.1 (Unreleased)
+## 12.10.0-beta.1 (Unreleased)
+- Added support for service version 2020-10-02.
+- Added support for Immutable Storage with Versioning
+    - Added BlobBaseClient.SetImmutibilityPolicy()
+    - Added BlobBaseClient.DeleteImmutabilityPolicy()
+    - Added BlobBaseClient.SetLegalHold()
+- Added support for listing deleted root blobs with versions to BlobContainerClient.GetBlobs() and .GetBlobsByHierarchy()
+- Added support for OAuth copy sources for synchronous copy operations.
+- Added support for Parquet as an input format in BlockBlobClient.Query().
 
+## 12.9.0 (2021-06-08)
+- Includes all features from 12.9.0-beta.4.
+- Fixed bug where BlobClient.DownloadStreaming or BlobClient.DownloadData could corrupt data on retry.
+- Fixed bug where specifying "*" as IfMatch condition could lead to inconsistend read in BlobClient.DownloadTo.
+- Fixed bug where specifying conditions in BlobBaseClient.OpenRead could override allowModifications flag in BlobOpenReadOptions leading to inconsistent read.
+- Fixed bug where BlobProperties.IsLatestVersion from BlobBaseClient.GetProperties did not set the value (defaulted to false).
+- Fixed bug where reading blob with Client Side Encryption enabled results in high CPU.
+
+## 12.8.4 (2021-05-20)
+- Fixed bug where Client Side Encryption during large transactions (greater than max int value) would throw an exception.
+
+## 12.9.0-beta.4 (2021-05-12)
+- Added support for service version 2020-08-04.
+- Added WithCustomerProvidedKey() and WithEncryptionScope() to BlobClient, BlobBaseClient, AppendBlobClient, and PageBlobClient.
+- BlobLeaseClient now remembers the Lease ID after a lease change.
+- Fixed bug where clients would sometimes throw a NullReferenceException when calling GenerateSas() with a BlobSasBuilder parameter.
+- Fixed bug where BlobBaseClient.Exists() would not function correctly on blobs encrypted with CPK.
+- Includes all updates and fixes from 12.8.2 and 12.8.3
+
+## 12.8.3 (2021-04-27)
+- Fixed bug where Stream returned by BlockBlobClient.OpenWrite could corrupt blocks if flushed between writes.
+
+## 12.8.2 (2021-04-27)
+- This release contains bug fixes to improve quality.
+
+## 12.9.0-beta.3 (2021-04-09)
+- This release contains bug fixes to improve quality.
+
+## 12.8.1 (2021-03-29)
+- Fixed bug where ClientDiagnostics's DiagnosticListener was leaking resources.
+
+## 12.9.0-beta.2 (2021-03-09)
+- Fixed a bug where BlockBlobClient.GetBlockList threw when dealing with extremely large blocks.
+- Fixed bug where `Stream` returned by `BlockBlobClient.OpenWrite` could corrupt blocks if flushed between writes.
+- Added BlobBaseClient.DownloadContent and BlobClient.Upload overloads that work with [BinaryData](https://github.com/Azure/azure-sdk-for-net/tree/System.Memory.Data_1.0.1/sdk/core/System.Memory.Data).
+- Added BlobBaseClient.DownloadStreaming that replaces BlobBaseClient.Download.
+
+## 12.9.0-beta.1 (2021-02-09)
+- Added support for service version 2020-06-12.
+- Fixed bug where BlobBaseClient.CanGenerateSasUri, BlobContainerClient.CanGenerateSasUri, BlobServiceClient.CanGenerateSasUri was not mockable
 
 ## 12.8.0 (2021-01-12)
 - Includes all features from 12.8.0-beta.1

@@ -188,7 +188,7 @@ namespace Azure.Core.Tests
         }
 
         [Test]
-        public void NoopsWhenDisabled()
+        public void NoOpsWhenDisabled()
         {
             DiagnosticScopeFactory clientDiagnostics = new DiagnosticScopeFactory("Azure.Clients",  "Microsoft.Azure.Core.Cool.Tests", false);
             DiagnosticScope scope = clientDiagnostics.CreateScope("");
@@ -203,6 +203,18 @@ namespace Azure.Core.Tests
         public void GetResourceProviderNamespaceReturnsAttributeValue()
         {
             Assert.AreEqual("Microsoft.Azure.Core.Cool.Tests", ClientDiagnostics.GetResourceProviderNamespace(GetType().Assembly));
+        }
+
+        [Test]
+        public void CreatesASingleListenerPerNamespace()
+        {
+            using var testListener = new TestDiagnosticListener(l => l.Name.StartsWith("Azure.Clients."));
+
+            _ = new DiagnosticScopeFactory("Azure.Clients.1",  "Microsoft.Azure.Core.Cool.Tests", true);
+            _ = new DiagnosticScopeFactory("Azure.Clients.1",  "Microsoft.Azure.Core.Cool.Tests", true);
+            _ = new DiagnosticScopeFactory("Azure.Clients.2",  "Microsoft.Azure.Core.Cool.Tests", true);
+
+            Assert.AreEqual(2, testListener.Sources.Count);
         }
     }
 }

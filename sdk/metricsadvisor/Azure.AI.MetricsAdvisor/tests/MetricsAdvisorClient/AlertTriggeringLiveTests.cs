@@ -63,17 +63,47 @@ namespace Azure.AI.MetricsAdvisor.Tests
         }
 
         [RecordedTest]
-        public async Task GetAnomalies()
+        public async Task GetAlertsWithTokenCredential()
         {
-            MetricsAdvisorClient client = GetMetricsAdvisorClient();
+            MetricsAdvisorClient client = GetMetricsAdvisorClient(useTokenCredential: true);
+
+            var options = new GetAlertsOptions(SamplingStartTime, SamplingEndTime, AlertQueryTimeMode.AnomalyTime);
+
+            var alertCount = 0;
+
+            await foreach (AnomalyAlert alert in client.GetAlertsAsync(AlertConfigurationId, options))
+            {
+                Assert.That(alert, Is.Not.Null);
+                Assert.That(alert.Id, Is.Not.Null.And.Not.Empty);
+                Assert.That(alert.Timestamp, Is.Not.EqualTo(default(DateTimeOffset)));
+                Assert.That(alert.CreatedTime, Is.Not.EqualTo(default(DateTimeOffset)));
+                Assert.That(alert.ModifiedTime, Is.Not.EqualTo(default(DateTimeOffset)));
+                Assert.That(alert.Timestamp, Is.InRange(SamplingStartTime, SamplingEndTime));
+
+                if (++alertCount >= MaximumSamplesCount)
+                {
+                    break;
+                }
+            }
+
+            Assert.That(alertCount, Is.GreaterThan(0));
+        }
+
+        [RecordedTest]
+        [TestCase(true)]
+        [TestCase(false)]
+        public async Task GetAnomalies(bool useTokenCredential)
+        {
+            MetricsAdvisorClient client = GetMetricsAdvisorClient(useTokenCredential);
 
             var anomalyCount = 0;
 
             await foreach (DataPointAnomaly anomaly in client.GetAnomaliesAsync(AlertConfigurationId, AlertId))
             {
                 Assert.That(anomaly, Is.Not.Null);
+                Assert.That(anomaly.DataFeedId, Is.Not.Null.And.Not.Empty);
                 Assert.That(anomaly.MetricId, Is.Not.Null.And.Not.Empty);
-                Assert.That(anomaly.AnomalyDetectionConfigurationId, Is.Not.Null.And.Not.Empty);
+                Assert.That(anomaly.DetectionConfigurationId, Is.Not.Null.And.Not.Empty);
                 Assert.That(anomaly.Timestamp, Is.Not.EqualTo(default(DateTimeOffset)));
                 Assert.That(anomaly.CreatedTime, Is.Not.EqualTo(default(DateTimeOffset)));
                 Assert.That(anomaly.ModifiedTime, Is.Not.EqualTo(default(DateTimeOffset)));
@@ -92,9 +122,11 @@ namespace Azure.AI.MetricsAdvisor.Tests
         }
 
         [RecordedTest]
-        public async Task GetIncidents()
+        [TestCase(true)]
+        [TestCase(false)]
+        public async Task GetIncidents(bool useTokenCredential)
         {
-            MetricsAdvisorClient client = GetMetricsAdvisorClient();
+            MetricsAdvisorClient client = GetMetricsAdvisorClient(useTokenCredential);
 
             var incidentCount = 0;
 
@@ -103,6 +135,7 @@ namespace Azure.AI.MetricsAdvisor.Tests
                 Assert.That(incident, Is.Not.Null);
 
                 Assert.That(incident.Id, Is.Not.Null.And.Not.Empty);
+                Assert.That(incident.DataFeedId, Is.Not.Null.And.Not.Empty);
                 Assert.That(incident.MetricId, Is.Not.Null.And.Not.Empty);
                 Assert.That(incident.DetectionConfigurationId, Is.Not.Null.And.Not.Empty);
                 Assert.That(incident.StartTime, Is.Not.EqualTo(default(DateTimeOffset)));
@@ -111,7 +144,7 @@ namespace Azure.AI.MetricsAdvisor.Tests
                 // Service bug: https://github.com/Azure/azure-sdk-for-net/issues/16581
                 //Assert.That(incident.Severity, Is.Not.EqualTo(default(AnomalySeverity)));
 
-                ValidateSeriesKey(incident.DimensionKey);
+                ValidateSeriesKey(incident.RootDimensionKey);
 
                 if (++incidentCount >= MaximumSamplesCount)
                 {

@@ -10,6 +10,7 @@ using Azure.Core;
 using Azure.Core.TestFramework;
 using Azure.Storage.Files.Shares.Models;
 using Azure.Storage.Sas;
+using Azure.Storage.Test;
 using Azure.Storage.Test.Shared;
 using NUnit.Framework;
 
@@ -20,8 +21,15 @@ namespace Azure.Storage.Files.Shares.Tests
         ShareClientOptions.ServiceVersion.V2019_07_07,
         ShareClientOptions.ServiceVersion.V2019_12_12,
         ShareClientOptions.ServiceVersion.V2020_02_10,
-        ShareClientOptions.ServiceVersion.V2020_04_08)]
-    public class FileTestBase : StorageTestBase
+        ShareClientOptions.ServiceVersion.V2020_04_08,
+        ShareClientOptions.ServiceVersion.V2020_06_12,
+        ShareClientOptions.ServiceVersion.V2020_08_04,
+        ShareClientOptions.ServiceVersion.V2020_10_02,
+        StorageVersionExtensions.LatestVersion,
+        StorageVersionExtensions.MaxVersion,
+        RecordingServiceVersion = StorageVersionExtensions.MaxVersion,
+        LiveServiceVersions = new object[] { StorageVersionExtensions.LatestVersion })]
+    public class FileTestBase : StorageTestBase<StorageTestEnvironment>
     {
         protected readonly ShareClientOptions.ServiceVersion _serviceVersion;
 
@@ -41,7 +49,7 @@ namespace Azure.Storage.Files.Shares.Tests
 
         public ShareClientOptions GetOptions()
         {
-            var options = new ShareClientOptions
+            var options = new ShareClientOptions(_serviceVersion)
             {
                 Diagnostics = { IsLoggingEnabled = true },
                 Retry =
@@ -51,7 +59,6 @@ namespace Azure.Storage.Files.Shares.Tests
                     Delay = TimeSpan.FromSeconds(Mode == RecordedTestMode.Playback ? 0.01 : 1),
                     MaxDelay = TimeSpan.FromSeconds(Mode == RecordedTestMode.Playback ? 0.1 : 60)
                 },
-                Transport = GetTransport()
             };
             if (Mode != RecordedTestMode.Live)
             {
@@ -105,6 +112,15 @@ namespace Azure.Storage.Files.Shares.Tests
                     new StorageSharedKeyCredential(
                         TestConfigDefault.AccountName,
                         TestConfigDefault.AccountKey),
+                    GetOptions()));
+
+        public ShareServiceClient GetServiceClient_OAuth_SharedKey()
+            => InstrumentClient(
+                new ShareServiceClient(
+                    new Uri(TestConfigOAuth.FileServiceEndpoint),
+                    new StorageSharedKeyCredential(
+                        TestConfigOAuth.AccountName,
+                        TestConfigOAuth.AccountKey),
                     GetOptions()));
 
         public ShareServiceClient GetServiceClient_Premium()
@@ -226,16 +242,15 @@ namespace Azure.Storage.Files.Shares.Tests
             credentials ??= GetAccountSasCredentials();
             if (!includeEndpoint)
             {
-                return TestExtensions.CreateStorageConnectionString(
+                return new StorageConnectionString(
                     credentials,
-                    TestConfigDefault.AccountName);
+                    (new Uri(TestConfigDefault.BlobServiceEndpoint), new Uri(TestConfigDefault.BlobServiceSecondaryEndpoint)),
+                    (new Uri(TestConfigDefault.QueueServiceEndpoint), new Uri(TestConfigDefault.QueueServiceSecondaryEndpoint)),
+                    (new Uri(TestConfigDefault.TableServiceEndpoint), new Uri(TestConfigDefault.TableServiceSecondaryEndpoint)),
+                    (new Uri(TestConfigDefault.FileServiceEndpoint), new Uri(TestConfigDefault.FileServiceSecondaryEndpoint)));
             }
 
-            (Uri, Uri) fileUri = StorageConnectionString.ConstructFileEndpoint(
-                Constants.Https,
-                TestConfigDefault.AccountName,
-                default,
-                default);
+            (Uri, Uri) fileUri = (new Uri(TestConfigDefault.FileServiceEndpoint), new Uri(TestConfigDefault.FileServiceSecondaryEndpoint));
 
             return new StorageConnectionString(
                     credentials,

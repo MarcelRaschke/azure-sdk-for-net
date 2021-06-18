@@ -2,20 +2,22 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
-using System.Reflection;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Azure.ServiceBus;
-using Microsoft.Azure.ServiceBus.Core;
+using Azure.Messaging.ServiceBus;
+using Microsoft.Azure.WebJobs.Extensions.ServiceBus.Config;
 using Microsoft.Azure.WebJobs.Host.Executors;
 using Microsoft.Azure.WebJobs.Host.Scale;
 using Microsoft.Azure.WebJobs.Host.TestCommon;
 using Microsoft.Azure.WebJobs.ServiceBus.Listeners;
+using Microsoft.Azure.WebJobs.ServiceBus.Tests;
+using Microsoft.Extensions.Azure;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
-using Xunit;
-using static Microsoft.Azure.ServiceBus.Message;
+using NUnit.Framework;
 
 namespace Microsoft.Azure.WebJobs.ServiceBus.UnitTests.Listeners
 {
@@ -24,6 +26,7 @@ namespace Microsoft.Azure.WebJobs.ServiceBus.UnitTests.Listeners
         private readonly ServiceBusListener _listener;
         private readonly Mock<ITriggeredFunctionExecutor> _mockExecutor;
         private readonly Mock<MessagingProvider> _mockMessagingProvider;
+        private readonly Mock<ServiceBusClientFactory> _mockClientFactory;
         private readonly Mock<MessageProcessor> _mockMessageProcessor;
         private readonly TestLoggerProvider _loggerProvider;
         private readonly LoggerFactory _loggerFactory;
@@ -35,101 +38,104 @@ namespace Microsoft.Azure.WebJobs.ServiceBus.UnitTests.Listeners
         {
             _mockExecutor = new Mock<ITriggeredFunctionExecutor>(MockBehavior.Strict);
 
-            MessageHandlerOptions messageOptions = new MessageHandlerOptions(ExceptionReceivedHandler);
-            MessageReceiver messageReceiver = new MessageReceiver(_testConnection, _entityPath);
-            _mockMessageProcessor = new Mock<MessageProcessor>(MockBehavior.Strict, messageReceiver, messageOptions);
+            var client = new ServiceBusClient(_testConnection);
+            ServiceBusProcessor processor = client.CreateProcessor(_entityPath);
+            ServiceBusReceiver receiver = client.CreateReceiver(_entityPath);
+            var configuration = ConfigurationUtilities.CreateConfiguration(new KeyValuePair<string, string>("connection", _testConnection));
 
             ServiceBusOptions config = new ServiceBusOptions
             {
-                MessageHandlerOptions = messageOptions
+                ExceptionHandler = ExceptionReceivedHandler
             };
-            _mockMessagingProvider = new Mock<MessagingProvider>(MockBehavior.Strict, new OptionsWrapper<ServiceBusOptions>(config));
+            _mockMessageProcessor = new Mock<MessageProcessor>(MockBehavior.Strict, processor);
 
+            _mockMessagingProvider = new Mock<MessagingProvider>(new OptionsWrapper<ServiceBusOptions>(config));
+            _mockClientFactory = new Mock<ServiceBusClientFactory>(configuration, Mock.Of<AzureComponentFactory>(), _mockMessagingProvider.Object, new AzureEventSourceLogForwarder(new NullLoggerFactory()), new OptionsWrapper<ServiceBusOptions>(new ServiceBusOptions()));
             _mockMessagingProvider
-                .Setup(p => p.CreateMessageProcessor(_entityPath, _testConnection))
+                .Setup(p => p.CreateMessageProcessor(It.IsAny<ServiceBusClient>(), _entityPath, It.IsAny<ServiceBusProcessorOptions>()))
                 .Returns(_mockMessageProcessor.Object);
 
             _mockMessagingProvider
-                    .Setup(p => p.CreateMessageReceiver(_entityPath, _testConnection))
-                    .Returns(messageReceiver);
-
-            Mock<ServiceBusAccount> mockServiceBusAccount = new Mock<ServiceBusAccount>(MockBehavior.Strict);
-            mockServiceBusAccount.Setup(a => a.ConnectionString).Returns(_testConnection);
+                    .Setup(p => p.CreateBatchMessageReceiver(It.IsAny<ServiceBusClient>(), _entityPath, default))
+                    .Returns(receiver);
 
             _loggerFactory = new LoggerFactory();
             _loggerProvider = new TestLoggerProvider();
             _loggerFactory.AddProvider(_loggerProvider);
 
-            _listener = new ServiceBusListener(_functionId, EntityType.Queue, _entityPath, false, _mockExecutor.Object, config, mockServiceBusAccount.Object,
-                                _mockMessagingProvider.Object, _loggerFactory, false);
+            _listener = new ServiceBusListener(
+                _functionId,
+                ServiceBusEntityType.Queue,
+                _entityPath,
+                false,
+                config.AutoCompleteMessages,
+                _mockExecutor.Object,
+                config,
+                "connection",
+                _mockMessagingProvider.Object,
+                _loggerFactory,
+                false,
+                _mockClientFactory.Object);
         }
 
-        [Fact]
+        [Test]
         public async Task ProcessMessageAsync_Success()
         {
-            var message = new CustomMessage();
-            var systemProperties = new Message.SystemPropertiesCollection();
-            typeof(Message.SystemPropertiesCollection).GetProperty("SequenceNumber").SetValue(systemProperties, 1);
-            typeof(Message.SystemPropertiesCollection).GetProperty("DeliveryCount").SetValue(systemProperties, 55);
-            typeof(Message.SystemPropertiesCollection).GetProperty("EnqueuedTimeUtc").SetValue(systemProperties, DateTime.Now);
-            typeof(Message.SystemPropertiesCollection).GetProperty("LockedUntilUtc").SetValue(systemProperties, DateTime.Now);
-            typeof(Message).GetProperty("SystemProperties").SetValue(message, systemProperties);
-
-            message.MessageId = Guid.NewGuid().ToString();
-            _mockMessageProcessor.Setup(p => p.BeginProcessingMessageAsync(message, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+            var message = ServiceBusModelFactory.ServiceBusReceivedMessage(
+                messageId: Guid.NewGuid().ToString(),
+                sequenceNumber: 1,
+                deliveryCount: 55,
+                enqueuedTime: DateTimeOffset.Now,
+                lockedUntil: DateTimeOffset.Now);
+            var receiver = new Mock<ServiceBusReceiver>().Object;
+            var args = new ProcessMessageEventArgs(message, receiver, CancellationToken.None);
+            _mockMessageProcessor.Setup(p => p.BeginProcessingMessageAsync(It.IsAny<ServiceBusMessageActions>(), message, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
             FunctionResult result = new FunctionResult(true);
             _mockExecutor.Setup(p => p.TryExecuteAsync(It.Is<TriggeredFunctionData>(q => ((ServiceBusTriggerInput)q.TriggerValue).Messages[0] == message), It.IsAny<CancellationToken>())).ReturnsAsync(result);
 
-            _mockMessageProcessor.Setup(p => p.CompleteProcessingMessageAsync(message, result, It.IsAny<CancellationToken>())).Returns(Task.FromResult(0));
+            _mockMessageProcessor.Setup(p => p.CompleteProcessingMessageAsync(It.IsAny<ServiceBusMessageActions>(), message, result, It.IsAny<CancellationToken>())).Returns(Task.FromResult(0));
 
-            await _listener.ProcessMessageAsync(message, CancellationToken.None);
+            await _listener.ProcessMessageAsync(args);
 
             _mockMessageProcessor.VerifyAll();
             _mockExecutor.VerifyAll();
             _mockMessageProcessor.VerifyAll();
         }
 
-        [Fact]
+        [Test]
         public async Task ProcessMessageAsync_BeginProcessingReturnsFalse_MessageNotProcessed()
         {
-            var message = new CustomMessage();
-            message.MessageId = Guid.NewGuid().ToString();
-            _mockMessageProcessor.Setup(p => p.BeginProcessingMessageAsync(message, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+            var message = ServiceBusModelFactory.ServiceBusReceivedMessage(messageId: Guid.NewGuid().ToString());
+            var receiver = new Mock<ServiceBusReceiver>().Object;
 
-            await _listener.ProcessMessageAsync(message, CancellationToken.None);
+            _mockMessageProcessor.Setup(p => p.BeginProcessingMessageAsync(
+                It.IsAny<ServiceBusMessageActions>(),
+                message,
+                It.IsAny<CancellationToken>())).ReturnsAsync(false);
+            var args = new ProcessMessageEventArgs(message, receiver, CancellationToken.None);
+
+            await _listener.ProcessMessageAsync(args);
 
             _mockMessageProcessor.VerifyAll();
         }
 
-        [Fact]
+        [Test]
         public void GetMonitor_ReturnsExpectedValue()
         {
             IScaleMonitor scaleMonitor = _listener.GetMonitor();
 
-            Assert.Equal(typeof(ServiceBusScaleMonitor), scaleMonitor.GetType());
-            Assert.Equal(scaleMonitor.Descriptor.Id, $"{_functionId}-ServiceBusTrigger-{_entityPath}".ToLower());
+            Assert.AreEqual(typeof(ServiceBusScaleMonitor), scaleMonitor.GetType());
+            Assert.AreEqual(scaleMonitor.Descriptor.Id, $"{_functionId}-ServiceBusTrigger-{_entityPath}".ToLower());
 
             var scaleMonitor2 = _listener.GetMonitor();
 
-            Assert.Same(scaleMonitor, scaleMonitor2);
+            Assert.AreSame(scaleMonitor, scaleMonitor2);
         }
 
-        private Task ExceptionReceivedHandler(ExceptionReceivedEventArgs eventArgs)
+        private Task ExceptionReceivedHandler(ProcessErrorEventArgs eventArgs)
         {
             return Task.CompletedTask;
-        }
-    }
-
-    // Mock calls ToString() for Mesage. This ckass fixes bug in azure-service-bus-dotnet.
-    // https://github.com/Azure/azure-service-bus-dotnet/blob/dev/src/Microsoft.Azure.ServiceBus/Message.cs#L291
-#pragma warning disable SA1402 // File may only contain a single type
-    internal class CustomMessage : Message
-#pragma warning restore SA1402 // File may only contain a single type
-    {
-        public override string ToString()
-        {
-            return MessageId;
         }
     }
 }
